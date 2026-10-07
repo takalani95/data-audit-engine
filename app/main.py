@@ -275,7 +275,7 @@ if uploaded_file is not None:
                 dimension_rows
             ),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         # =================================================
@@ -377,7 +377,7 @@ if uploaded_file is not None:
             st.dataframe(
                 type_dataframe,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         with type_col2:
@@ -446,7 +446,7 @@ if uploaded_file is not None:
                 column_rows
             ),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         # =================================================
@@ -647,7 +647,7 @@ if uploaded_file is not None:
             st.dataframe(
                 safe_sample_dataframe,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         else:
@@ -672,7 +672,7 @@ if uploaded_file is not None:
 
             st.dataframe(
                 preview_dataframe,
-                use_container_width=True,
+                width="stretch",
             )
 
             st.caption(
