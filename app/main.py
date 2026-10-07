@@ -34,9 +34,60 @@ from src.quality.engine import (
 from src.recommendations.engine import (
     generate_recommendations,
 )
+from src.reporting.builder import (
+    build_audit_report,
+)
+from src.reporting.pdf_renderer import (
+    render_audit_report_pdf,
+)
 from src.visualization.dataframe_utils import (
     make_dataframe_display_safe,
 )
+
+
+# =========================================================
+# CONSTANTS
+# =========================================================
+
+MIDDLE_DOT = "\u00b7"
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def build_pdf_file_name(
+    source_file_name: str,
+) -> str:
+    """
+    Build a safe, predictable PDF download filename from
+    the uploaded dataset name.
+    """
+
+    source_path = Path(source_file_name)
+
+    stem = source_path.stem.strip()
+
+    if not stem:
+        stem = "dataset"
+
+    safe_stem = "".join(
+        character
+        if character.isalnum()
+        or character in ("-", "_")
+        else "_"
+        for character in stem
+    )
+
+    safe_stem = safe_stem.strip("_")
+
+    if not safe_stem:
+        safe_stem = "dataset"
+
+    return (
+        f"{safe_stem}_"
+        "MASH_LABS_Data_Quality_Audit.pdf"
+    )
 
 
 # =========================================================
@@ -55,7 +106,11 @@ st.set_page_config(
 # =========================================================
 
 st.title("MASH LABS")
-st.caption("APPLIED AI · DATA · ENGINEERING")
+
+st.caption(
+    f"APPLIED AI {MIDDLE_DOT} "
+    f"DATA {MIDDLE_DOT} ENGINEERING"
+)
 
 st.header("Data Audit Engine")
 
@@ -123,6 +178,28 @@ if uploaded_file is not None:
         )
 
         # =================================================
+        # REPORTING ENGINE
+        # =================================================
+        # The report is assembled from the same verified
+        # objects already used by the Streamlit interface.
+        # No separate audit is performed for PDF export.
+
+        audit_report = build_audit_report(
+            metadata=metadata,
+            profile=profile,
+            quality_report=quality_report,
+            recommendations=recommendations,
+        )
+
+        pdf_bytes = render_audit_report_pdf(
+            audit_report
+        )
+
+        pdf_file_name = build_pdf_file_name(
+            metadata.file_name
+        )
+
+        # =================================================
         # DATASET OVERVIEW
         # =================================================
 
@@ -131,18 +208,21 @@ if uploaded_file is not None:
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
+
             st.metric(
                 "Rows",
                 f"{profile.rows:,}",
             )
 
         with col2:
+
             st.metric(
                 "Columns",
                 f"{profile.columns:,}",
             )
 
         with col3:
+
             st.metric(
                 "Missing Cells",
                 f"{profile.missing_cells:,}",
@@ -153,6 +233,7 @@ if uploaded_file is not None:
             )
 
         with col4:
+
             st.metric(
                 "Duplicate Rows",
                 f"{profile.duplicate_rows:,}",
@@ -163,8 +244,8 @@ if uploaded_file is not None:
             )
 
         st.caption(
-            f"{metadata.file_name} · "
-            f"{metadata.file_type.upper()} · "
+            f"{metadata.file_name} {MIDDLE_DOT} "
+            f"{metadata.file_type.upper()} {MIDDLE_DOT} "
             f"{metadata.file_size_bytes / 1024:.1f} KB"
         )
 
@@ -174,16 +255,22 @@ if uploaded_file is not None:
 
         st.divider()
 
-        st.subheader("Data Quality Assessment")
+        st.subheader(
+            "Data Quality Assessment"
+        )
 
         score_col, status_col, critical_col, warning_col = (
             st.columns(4)
         )
 
         with score_col:
+
             st.metric(
                 "Quality Score",
-                f"{quality_report.overall_score:.1f} / 100",
+                (
+                    f"{quality_report.overall_score:.1f} "
+                    "/ 100"
+                ),
             )
 
         status_display = {
@@ -193,6 +280,7 @@ if uploaded_file is not None:
         }
 
         with status_col:
+
             st.metric(
                 "Status",
                 status_display.get(
@@ -202,12 +290,14 @@ if uploaded_file is not None:
             )
 
         with critical_col:
+
             st.metric(
                 "Critical Issues",
                 quality_report.critical_count,
             )
 
         with warning_col:
+
             st.metric(
                 "Warnings",
                 quality_report.warning_count,
@@ -220,10 +310,43 @@ if uploaded_file is not None:
         )
 
         # =================================================
+        # PDF REPORT DOWNLOAD
+        # =================================================
+
+        st.write(
+            "### Audit Report"
+        )
+
+        report_col1, report_col2 = st.columns(
+            [1, 2]
+        )
+
+        with report_col1:
+
+            st.download_button(
+                label="Download PDF Audit Report",
+                data=pdf_bytes,
+                file_name=pdf_file_name,
+                mime="application/pdf",
+                width="stretch",
+            )
+
+        with report_col2:
+
+            st.caption(
+                "The PDF is generated from the same "
+                "deterministic audit results shown in "
+                "this application. Downloading the report "
+                "does not modify your source dataset."
+            )
+
+        # =================================================
         # QUALITY DIMENSIONS
         # =================================================
 
-        st.write("### Quality Dimensions")
+        st.write(
+            "### Quality Dimensions"
+        )
 
         dimension_rows = []
 
@@ -263,7 +386,8 @@ if uploaded_file is not None:
                         (
                             f"{dimension.score:.1f}"
                             if dimension.assessed
-                            and dimension.score is not None
+                            and dimension.score
+                            is not None
                             else "Not Assessed"
                         ),
 
@@ -278,7 +402,9 @@ if uploaded_file is not None:
                         ),
 
                     "Issues":
-                        len(dimension.issues),
+                        len(
+                            dimension.issues
+                        ),
                 }
             )
 
@@ -294,7 +420,9 @@ if uploaded_file is not None:
         # QUALITY FINDINGS
         # =================================================
 
-        st.write("### Quality Findings")
+        st.write(
+            "### Quality Findings"
+        )
 
         if not quality_report.issues:
 
@@ -326,14 +454,16 @@ if uploaded_file is not None:
             for issue in sorted_issues:
 
                 heading = (
-                    f"{issue.severity.upper()} · "
+                    f"{issue.severity.upper()} "
+                    f"{MIDDLE_DOT} "
                     f"{issue.title}"
                 )
 
                 if issue.column:
 
                     heading += (
-                        f" · {issue.column}"
+                        f" {MIDDLE_DOT} "
+                        f"{issue.column}"
                     )
 
                 if issue.severity == "critical":
@@ -447,8 +577,10 @@ if uploaded_file is not None:
 
                 priority_recommendations = [
                     recommendation
-                    for recommendation in recommendations
-                    if recommendation.priority == priority
+                    for recommendation
+                    in recommendations
+                    if recommendation.priority
+                    == priority
                 ]
 
                 if not priority_recommendations:
@@ -462,17 +594,23 @@ if uploaded_file is not None:
                     priority_recommendations
                 ):
 
-                    heading = recommendation.title
+                    heading = (
+                        recommendation.title
+                    )
 
                     if recommendation.column:
 
                         heading += (
-                            f" · {recommendation.column}"
+                            f" {MIDDLE_DOT} "
+                            f"{recommendation.column}"
                         )
 
                     affected_text = ""
 
-                    if recommendation.affected_count > 0:
+                    if (
+                        recommendation.affected_count
+                        > 0
+                    ):
 
                         affected_text = (
                             f"{recommendation.affected_count:,} "
@@ -480,12 +618,13 @@ if uploaded_file is not None:
                         )
 
                         if (
-                            recommendation.affected_percentage
+                            recommendation
+                            .affected_percentage
                             > 0
                         ):
 
                             affected_text += (
-                                " · "
+                                f" {MIDDLE_DOT} "
                                 f"{recommendation.affected_percentage:.2f}%"
                             )
 
@@ -718,7 +857,8 @@ if uploaded_file is not None:
             "Select a column",
             options=[
                 column.name
-                for column in profile.column_profiles
+                for column
+                in profile.column_profiles
             ],
         )
 
@@ -744,21 +884,27 @@ if uploaded_file is not None:
 
             st.metric(
                 "Missing",
-                f"{selected_profile.missing_percentage:.2f}%",
+                (
+                    f"{selected_profile.missing_percentage:.2f}%"
+                ),
             )
 
         with inspect3:
 
             st.metric(
                 "Unique Values",
-                f"{selected_profile.unique_count:,}",
+                (
+                    f"{selected_profile.unique_count:,}"
+                ),
             )
 
         with inspect4:
 
             st.metric(
                 "Unique %",
-                f"{selected_profile.unique_percentage:.2f}%",
+                (
+                    f"{selected_profile.unique_percentage:.2f}%"
+                ),
             )
 
         if (
