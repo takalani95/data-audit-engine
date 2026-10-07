@@ -1,5 +1,22 @@
+from pathlib import Path
+import sys
+
 import pandas as pd
 import streamlit as st
+
+
+# =========================================================
+# PROJECT PATH
+# =========================================================
+# Streamlit may execute app/main.py with the app directory
+# as the import root. Explicitly add the repository root so
+# the local src package can always be imported.
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 
 from src.ingestion.loader import (
     DatasetLoadError,
@@ -14,7 +31,14 @@ from src.profiling.profiler import (
 from src.quality.engine import (
     run_quality_audit,
 )
+from src.visualization.dataframe_utils import (
+    make_dataframe_display_safe,
+)
 
+
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
 
 st.set_page_config(
     page_title="MASH LABS | Data Audit Engine",
@@ -446,6 +470,7 @@ if uploaded_file is not None:
                 )
 
             else:
+
                 st.write(
                     "None detected."
                 )
@@ -463,6 +488,7 @@ if uploaded_file is not None:
                 )
 
             else:
+
                 st.write(
                     "None detected."
                 )
@@ -488,6 +514,7 @@ if uploaded_file is not None:
                 )
 
             else:
+
                 st.write(
                     "None detected."
                 )
@@ -604,13 +631,21 @@ if uploaded_file is not None:
 
         if selected_profile.sample_values:
 
+            sample_dataframe = pd.DataFrame(
+                {
+                    "Sample Value":
+                        selected_profile.sample_values
+                }
+            )
+
+            safe_sample_dataframe = (
+                make_dataframe_display_safe(
+                    sample_dataframe
+                )
+            )
+
             st.dataframe(
-                pd.DataFrame(
-                    {
-                        "Sample Value":
-                            selected_profile.sample_values
-                    }
-                ),
+                safe_sample_dataframe,
                 hide_index=True,
                 use_container_width=True,
             )
@@ -629,13 +664,22 @@ if uploaded_file is not None:
             "Raw Data Preview"
         ):
 
+            preview_dataframe = (
+                make_dataframe_display_safe(
+                    dataframe.head(20)
+                )
+            )
+
             st.dataframe(
-                dataframe.head(20),
+                preview_dataframe,
                 use_container_width=True,
             )
 
             st.caption(
-                "Showing the first 20 rows."
+                "Showing the first 20 rows. "
+                "Display-safe conversion is applied only "
+                "to the preview; the audit uses the "
+                "original dataset."
             )
 
     except FileValidationError as exc:
@@ -660,6 +704,7 @@ if uploaded_file is not None:
         with st.expander(
             "Technical Details"
         ):
+
             st.code(
                 str(exc)
             )

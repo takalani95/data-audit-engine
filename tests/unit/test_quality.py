@@ -167,7 +167,7 @@ def test_quality_issues_are_explainable():
     assert issue.affected_percentage > 0
 
 
-def test_unimplemented_dimensions_are_not_assessed():
+def test_implemented_dimensions_are_assessed():
     dataframe = pd.DataFrame(
         {
             "customer": [
@@ -187,30 +187,147 @@ def test_unimplemented_dimensions_are_not_assessed():
         profile,
     )
 
+    implemented_dimensions = [
+        "completeness",
+        "uniqueness",
+        "validity",
+        "structural_quality",
+    ]
+
+    for dimension_name in implemented_dimensions:
+        dimension = report.dimensions[
+            dimension_name
+        ]
+
+        assert dimension.assessed is True
+        assert dimension.score is not None
+
+
+def test_pending_dimensions_are_not_assessed():
+    dataframe = pd.DataFrame(
+        {
+            "customer": [
+                "A",
+                "B",
+                "C",
+            ]
+        }
+    )
+
+    profile = profile_dataset(
+        dataframe
+    )
+
+    report = run_quality_audit(
+        dataframe,
+        profile,
+    )
+
+    pending_dimensions = [
+        "consistency",
+        "statistical_health",
+    ]
+
+    for dimension_name in pending_dimensions:
+        dimension = report.dimensions[
+            dimension_name
+        ]
+
+        assert dimension.assessed is False
+        assert dimension.score is None
+
+
+def test_validity_issue_flows_into_quality_report():
+    dataframe = pd.DataFrame(
+        {
+            "customer": [
+                "A",
+                "",
+                "C",
+                "D",
+            ]
+        }
+    )
+
+    profile = profile_dataset(
+        dataframe
+    )
+
+    report = run_quality_audit(
+        dataframe,
+        profile,
+    )
+
+    validity_dimension = report.dimensions[
+        "validity"
+    ]
+
+    blank_issues = [
+        issue
+        for issue in validity_dimension.issues
+        if issue.code == "BLANK_STRING"
+    ]
+
+    assert validity_dimension.assessed is True
+    assert validity_dimension.score == 75.0
+
+    assert len(blank_issues) == 1
+    assert blank_issues[0].column == "customer"
+    assert blank_issues[0].affected_count == 1
+
+
+def test_validity_problem_reduces_overall_score():
+    clean_dataframe = pd.DataFrame(
+        {
+            "customer": [
+                "A",
+                "B",
+                "C",
+                "D",
+            ]
+        }
+    )
+
+    invalid_dataframe = pd.DataFrame(
+        {
+            "customer": [
+                "A",
+                "",
+                "C",
+                "D",
+            ]
+        }
+    )
+
+    clean_profile = profile_dataset(
+        clean_dataframe
+    )
+
+    invalid_profile = profile_dataset(
+        invalid_dataframe
+    )
+
+    clean_report = run_quality_audit(
+        clean_dataframe,
+        clean_profile,
+    )
+
+    invalid_report = run_quality_audit(
+        invalid_dataframe,
+        invalid_profile,
+    )
+
     assert (
-        report
+        invalid_report
         .dimensions["validity"]
-        .assessed
-        is False
-    )
-
-    assert (
-        report
+        .score
+        <
+        clean_report
         .dimensions["validity"]
         .score
-        is None
     )
 
     assert (
-        report
-        .dimensions["consistency"]
-        .score
-        is None
-    )
-
-    assert (
-        report
-        .dimensions["statistical_health"]
-        .score
-        is None
+        invalid_report.overall_score
+        < clean_report.overall_score
     )

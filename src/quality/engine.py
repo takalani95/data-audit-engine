@@ -13,6 +13,10 @@ from src.quality.models import (
     QualityIssue,
     QualityReport,
 )
+from src.quality.validity import (
+    calculate_validity_score,
+    run_validity_checks,
+)
 
 
 WEIGHTS = {
@@ -28,6 +32,11 @@ WEIGHTS = {
 def _score_completeness(
     profile: DatasetProfile,
 ) -> float:
+    """
+    Score dataset completeness from the percentage
+    of missing cells.
+    """
+
     return max(
         0.0,
         100.0 - profile.missing_percentage,
@@ -37,6 +46,10 @@ def _score_completeness(
 def _score_uniqueness(
     profile: DatasetProfile,
 ) -> float:
+    """
+    Score dataset uniqueness from duplicate rows.
+    """
+
     return max(
         0.0,
         100.0 - profile.duplicate_percentage,
@@ -46,6 +59,12 @@ def _score_uniqueness(
 def _score_structural_quality(
     profile: DatasetProfile,
 ) -> float:
+    """
+    Score basic structural quality.
+
+    Unnamed columns and constant columns currently
+    contribute deterministic penalties.
+    """
 
     if profile.columns == 0:
         return 0.0
@@ -106,14 +125,21 @@ def run_quality_audit(
     profile: DatasetProfile,
 ) -> QualityReport:
     """
-    Run deterministic quality checks.
+    Run the deterministic data-quality audit.
 
     Only implemented dimensions contribute to the
-    overall score. Unimplemented dimensions remain
-    explicitly unassessed.
+    overall score.
+
+    Dimensions that have not yet been implemented remain
+    explicitly unassessed and therefore do not influence
+    the current overall score.
     """
 
     issues: list[QualityIssue] = []
+
+    # -------------------------------------------------
+    # Completeness
+    # -------------------------------------------------
 
     issues.extend(
         check_missing_values(
@@ -123,11 +149,26 @@ def run_quality_audit(
     )
 
     issues.extend(
+        check_high_missing_dataset(
+            dataframe,
+            profile,
+        )
+    )
+
+    # -------------------------------------------------
+    # Uniqueness
+    # -------------------------------------------------
+
+    issues.extend(
         check_duplicate_rows(
             dataframe,
             profile,
         )
     )
+
+    # -------------------------------------------------
+    # Structural quality
+    # -------------------------------------------------
 
     issues.extend(
         check_unnamed_columns(
@@ -143,12 +184,27 @@ def run_quality_audit(
         )
     )
 
-    issues.extend(
-        check_high_missing_dataset(
-            dataframe,
-            profile,
-        )
+    # -------------------------------------------------
+    # Validity
+    # -------------------------------------------------
+
+    validity_issues = run_validity_checks(
+        dataframe,
+        profile,
     )
+
+    issues.extend(
+        validity_issues
+    )
+
+    validity_score = calculate_validity_score(
+        dataframe,
+        validity_issues,
+    )
+
+    # -------------------------------------------------
+    # Dimension scores
+    # -------------------------------------------------
 
     dimension_scores: dict[
         str,
@@ -161,7 +217,7 @@ def run_quality_audit(
             _score_uniqueness(profile),
 
         "validity":
-            None,
+            validity_score,
 
         "consistency":
             None,
@@ -172,6 +228,10 @@ def run_quality_audit(
         "statistical_health":
             None,
     }
+
+    # -------------------------------------------------
+    # Build dimension objects
+    # -------------------------------------------------
 
     dimensions: dict[
         str,
@@ -199,6 +259,17 @@ def run_quality_audit(
             assessed=score is not None,
             issues=dimension_issues,
         )
+
+    # -------------------------------------------------
+    # Overall score
+    # -------------------------------------------------
+    #
+    # Pending dimensions are excluded.
+    #
+    # The configured weights of assessed dimensions are
+    # renormalised so the current score remains on a
+    # 0-100 scale.
+    # -------------------------------------------------
 
     assessed_dimensions = [
         dimension
@@ -233,6 +304,10 @@ def run_quality_audit(
         2,
     )
 
+    # -------------------------------------------------
+    # Severity summary
+    # -------------------------------------------------
+
     critical_count = sum(
         issue.severity == "critical"
         for issue in issues
@@ -247,6 +322,10 @@ def run_quality_audit(
         issue.severity == "info"
         for issue in issues
     )
+
+    # -------------------------------------------------
+    # Operational status
+    # -------------------------------------------------
 
     status = _status_from_score_and_issues(
         score=overall_score,
