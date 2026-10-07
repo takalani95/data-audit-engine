@@ -8,6 +8,10 @@ from src.quality.checks import (
     check_missing_values,
     check_unnamed_columns,
 )
+from src.quality.consistency import (
+    calculate_consistency_score,
+    run_consistency_checks,
+)
 from src.quality.models import (
     QualityDimension,
     QualityIssue,
@@ -203,6 +207,23 @@ def run_quality_audit(
     )
 
     # -------------------------------------------------
+    # Consistency
+    # -------------------------------------------------
+
+    consistency_issues = run_consistency_checks(
+        dataframe
+    )
+
+    issues.extend(
+        consistency_issues
+    )
+
+    consistency_score = calculate_consistency_score(
+        dataframe,
+        consistency_issues,
+    )
+
+    # -------------------------------------------------
     # Dimension scores
     # -------------------------------------------------
 
@@ -220,7 +241,7 @@ def run_quality_audit(
             validity_score,
 
         "consistency":
-            None,
+            consistency_score,
 
         "structural_quality":
             _score_structural_quality(profile),

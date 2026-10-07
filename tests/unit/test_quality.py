@@ -191,6 +191,7 @@ def test_implemented_dimensions_are_assessed():
         "completeness",
         "uniqueness",
         "validity",
+        "consistency",
         "structural_quality",
     ]
 
@@ -224,7 +225,6 @@ def test_pending_dimensions_are_not_assessed():
     )
 
     pending_dimensions = [
-        "consistency",
         "statistical_health",
     ]
 
@@ -329,5 +329,88 @@ def test_validity_problem_reduces_overall_score():
 
     assert (
         invalid_report.overall_score
+        < clean_report.overall_score
+    )
+
+
+def test_consistency_problem_reduces_overall_score():
+    clean_dataframe = pd.DataFrame(
+        {
+            "bank": [
+                "FNB",
+                "ABSA",
+                "Nedbank",
+                "Capitec",
+            ],
+            "record_id": [
+                1,
+                2,
+                3,
+                4,
+            ],
+        }
+    )
+
+    inconsistent_dataframe = pd.DataFrame(
+        {
+            "bank": [
+                "FNB",
+                "fnb",
+                "Nedbank",
+                "Capitec",
+            ],
+            "record_id": [
+                1,
+                2,
+                3,
+                4,
+            ],
+        }
+    )
+
+    clean_profile = profile_dataset(
+        clean_dataframe
+    )
+
+    inconsistent_profile = profile_dataset(
+        inconsistent_dataframe
+    )
+
+    clean_report = run_quality_audit(
+        clean_dataframe,
+        clean_profile,
+    )
+
+    inconsistent_report = run_quality_audit(
+        inconsistent_dataframe,
+        inconsistent_profile,
+    )
+
+    assert (
+        clean_report
+        .dimensions["uniqueness"]
+        .score
+        == 100.0
+    )
+
+    assert (
+        inconsistent_report
+        .dimensions["uniqueness"]
+        .score
+        == 100.0
+    )
+
+    assert (
+        inconsistent_report
+        .dimensions["consistency"]
+        .score
+        <
+        clean_report
+        .dimensions["consistency"]
+        .score
+    )
+
+    assert (
+        inconsistent_report.overall_score
         < clean_report.overall_score
     )
