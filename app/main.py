@@ -31,6 +31,9 @@ from src.profiling.profiler import (
 from src.quality.engine import (
     run_quality_audit,
 )
+from src.recommendations.engine import (
+    generate_recommendations,
+)
 from src.visualization.dataframe_utils import (
     make_dataframe_display_safe,
 )
@@ -112,6 +115,14 @@ if uploaded_file is not None:
         )
 
         # =================================================
+        # RECOMMENDATIONS ENGINE
+        # =================================================
+
+        recommendations = generate_recommendations(
+            quality_report
+        )
+
+        # =================================================
         # DATASET OVERVIEW
         # =================================================
 
@@ -171,7 +182,7 @@ if uploaded_file is not None:
 
         with score_col:
             st.metric(
-                "Current Quality Score",
+                "Quality Score",
                 f"{quality_report.overall_score:.1f} / 100",
             )
 
@@ -203,8 +214,9 @@ if uploaded_file is not None:
             )
 
         st.caption(
-            "The current score uses only quality dimensions "
-            "that have been implemented and assessed."
+            "The quality score combines six deterministic, "
+            "explainable quality dimensions using the "
+            "configured weights shown below."
         )
 
         # =================================================
@@ -279,7 +291,7 @@ if uploaded_file is not None:
         )
 
         # =================================================
-        # QUALITY ISSUES
+        # QUALITY FINDINGS
         # =================================================
 
         st.write("### Quality Findings")
@@ -287,8 +299,8 @@ if uploaded_file is not None:
         if not quality_report.issues:
 
             st.success(
-                "No quality issues detected by the "
-                "currently implemented checks."
+                "No quality issues were detected by "
+                "the current audit checks."
             )
 
         else:
@@ -319,6 +331,7 @@ if uploaded_file is not None:
                 )
 
                 if issue.column:
+
                     heading += (
                         f" · {issue.column}"
                     )
@@ -343,6 +356,180 @@ if uploaded_file is not None:
                         f"**{heading}**\n\n"
                         f"{issue.description}"
                     )
+
+        # =================================================
+        # RECOMMENDATIONS
+        # =================================================
+
+        st.divider()
+
+        st.subheader(
+            "Recommendations"
+        )
+
+        st.caption(
+            "Recommendations are generated "
+            "deterministically from verified quality "
+            "findings. The engine does not modify "
+            "your dataset automatically."
+        )
+
+        if not recommendations:
+
+            st.success(
+                "No recommendations are required from "
+                "the currently detected quality findings."
+            )
+
+        else:
+
+            high_priority = [
+                recommendation
+                for recommendation in recommendations
+                if recommendation.priority == "high"
+            ]
+
+            medium_priority = [
+                recommendation
+                for recommendation in recommendations
+                if recommendation.priority == "medium"
+            ]
+
+            low_priority = [
+                recommendation
+                for recommendation in recommendations
+                if recommendation.priority == "low"
+            ]
+
+            rec_col1, rec_col2, rec_col3, rec_col4 = (
+                st.columns(4)
+            )
+
+            with rec_col1:
+
+                st.metric(
+                    "Recommendations",
+                    len(recommendations),
+                )
+
+            with rec_col2:
+
+                st.metric(
+                    "High Priority",
+                    len(high_priority),
+                )
+
+            with rec_col3:
+
+                st.metric(
+                    "Medium Priority",
+                    len(medium_priority),
+                )
+
+            with rec_col4:
+
+                st.metric(
+                    "Low Priority",
+                    len(low_priority),
+                )
+
+            priority_labels = {
+                "high": "HIGH PRIORITY",
+                "medium": "MEDIUM PRIORITY",
+                "low": "LOW PRIORITY",
+            }
+
+            for priority in (
+                "high",
+                "medium",
+                "low",
+            ):
+
+                priority_recommendations = [
+                    recommendation
+                    for recommendation in recommendations
+                    if recommendation.priority == priority
+                ]
+
+                if not priority_recommendations:
+                    continue
+
+                st.write(
+                    f"### {priority_labels[priority]}"
+                )
+
+                for recommendation in (
+                    priority_recommendations
+                ):
+
+                    heading = recommendation.title
+
+                    if recommendation.column:
+
+                        heading += (
+                            f" · {recommendation.column}"
+                        )
+
+                    affected_text = ""
+
+                    if recommendation.affected_count > 0:
+
+                        affected_text = (
+                            f"{recommendation.affected_count:,} "
+                            "affected"
+                        )
+
+                        if (
+                            recommendation.affected_percentage
+                            > 0
+                        ):
+
+                            affected_text += (
+                                " · "
+                                f"{recommendation.affected_percentage:.2f}%"
+                            )
+
+                    with st.expander(
+                        heading,
+                        expanded=(
+                            priority == "high"
+                        ),
+                    ):
+
+                        if affected_text:
+
+                            st.caption(
+                                affected_text
+                            )
+
+                        st.write(
+                            "**Problem**"
+                        )
+
+                        st.write(
+                            recommendation.problem
+                        )
+
+                        st.write(
+                            "**Why it matters**"
+                        )
+
+                        st.write(
+                            recommendation.why_it_matters
+                        )
+
+                        st.write(
+                            "**Recommended action**"
+                        )
+
+                        st.write(
+                            recommendation.recommended_action
+                        )
+
+                        st.caption(
+                            "Source finding: "
+                            f"{recommendation.source_issue_code}"
+                        )
 
         # =================================================
         # DETECTED TYPES
