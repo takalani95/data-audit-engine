@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mash-labs-data-audit-engine"
+version = "0.1.0"
+description = "Automated data profiling, quality assessment, visualization, scoring and reporting by MASH LABS."
+readme = "README.md"
+requires-python = ">=3.12"
+
+authors = [
+    {name = "Takalani Mashaba"}
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

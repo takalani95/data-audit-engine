@@ -1,0 +1,665 @@
+import pandas as pd
+import streamlit as st
+
+from src.ingestion.loader import (
+    DatasetLoadError,
+    load_dataset,
+)
+from src.ingestion.validators import (
+    FileValidationError,
+)
+from src.profiling.profiler import (
+    profile_dataset,
+)
+from src.quality.engine import (
+    run_quality_audit,
+)
+
+
+st.set_page_config(
+    page_title="MASH LABS | Data Audit Engine",
+    page_icon="📊",
+    layout="wide",
+)
+
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.title("MASH LABS")
+st.caption("APPLIED AI · DATA · ENGINEERING")
+
+st.header("Data Audit Engine")
+
+st.write(
+    """
+    Upload your data. Understand its structure, quality,
+    statistics, risks and opportunities.
+    """
+)
+
+
+# =========================================================
+# FILE UPLOAD
+# =========================================================
+
+uploaded_file = st.file_uploader(
+    "Upload a dataset",
+    type=["csv", "xlsx"],
+)
+
+
+if uploaded_file is not None:
+
+    try:
+
+        # =================================================
+        # INGESTION
+        # =================================================
+
+        result = load_dataset(
+            file=uploaded_file,
+            file_name=uploaded_file.name,
+        )
+
+        dataframe = result.dataframe
+        metadata = result.metadata
+
+        st.success(
+            "Dataset successfully ingested."
+        )
+
+        # =================================================
+        # PROFILING
+        # =================================================
+
+        profile = profile_dataset(
+            dataframe
+        )
+
+        # =================================================
+        # QUALITY AUDIT
+        # =================================================
+
+        quality_report = run_quality_audit(
+            dataframe,
+            profile,
+        )
+
+        # =================================================
+        # DATASET OVERVIEW
+        # =================================================
+
+        st.subheader("Dataset Overview")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric(
+                "Rows",
+                f"{profile.rows:,}",
+            )
+
+        with col2:
+            st.metric(
+                "Columns",
+                f"{profile.columns:,}",
+            )
+
+        with col3:
+            st.metric(
+                "Missing Cells",
+                f"{profile.missing_cells:,}",
+                help=(
+                    f"{profile.missing_percentage:.2f}% "
+                    "of all dataset cells"
+                ),
+            )
+
+        with col4:
+            st.metric(
+                "Duplicate Rows",
+                f"{profile.duplicate_rows:,}",
+                help=(
+                    f"{profile.duplicate_percentage:.2f}% "
+                    "of all dataset rows"
+                ),
+            )
+
+        st.caption(
+            f"{metadata.file_name} · "
+            f"{metadata.file_type.upper()} · "
+            f"{metadata.file_size_bytes / 1024:.1f} KB"
+        )
+
+        # =================================================
+        # QUALITY SCORE
+        # =================================================
+
+        st.divider()
+
+        st.subheader("Data Quality Assessment")
+
+        score_col, status_col, critical_col, warning_col = (
+            st.columns(4)
+        )
+
+        with score_col:
+            st.metric(
+                "Current Quality Score",
+                f"{quality_report.overall_score:.1f} / 100",
+            )
+
+        status_display = {
+            "good": "GOOD",
+            "needs_attention": "NEEDS ATTENTION",
+            "critical": "CRITICAL",
+        }
+
+        with status_col:
+            st.metric(
+                "Status",
+                status_display.get(
+                    quality_report.status,
+                    quality_report.status.upper(),
+                ),
+            )
+
+        with critical_col:
+            st.metric(
+                "Critical Issues",
+                quality_report.critical_count,
+            )
+
+        with warning_col:
+            st.metric(
+                "Warnings",
+                quality_report.warning_count,
+            )
+
+        st.caption(
+            "The current score uses only quality dimensions "
+            "that have been implemented and assessed."
+        )
+
+        # =================================================
+        # QUALITY DIMENSIONS
+        # =================================================
+
+        st.write("### Quality Dimensions")
+
+        dimension_rows = []
+
+        display_names = {
+            "completeness":
+                "Completeness",
+
+            "uniqueness":
+                "Uniqueness",
+
+            "validity":
+                "Validity",
+
+            "consistency":
+                "Consistency",
+
+            "structural_quality":
+                "Structural Quality",
+
+            "statistical_health":
+                "Statistical Health",
+        }
+
+        for name, dimension in (
+            quality_report.dimensions.items()
+        ):
+
+            dimension_rows.append(
+                {
+                    "Dimension":
+                        display_names.get(
+                            name,
+                            name,
+                        ),
+
+                    "Score":
+                        (
+                            f"{dimension.score:.1f}"
+                            if dimension.assessed
+                            and dimension.score is not None
+                            else "Not Assessed"
+                        ),
+
+                    "Configured Weight":
+                        f"{dimension.weight:.0f}%",
+
+                    "Status":
+                        (
+                            "Assessed"
+                            if dimension.assessed
+                            else "Pending"
+                        ),
+
+                    "Issues":
+                        len(dimension.issues),
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(
+                dimension_rows
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        # =================================================
+        # QUALITY ISSUES
+        # =================================================
+
+        st.write("### Quality Findings")
+
+        if not quality_report.issues:
+
+            st.success(
+                "No quality issues detected by the "
+                "currently implemented checks."
+            )
+
+        else:
+
+            severity_order = {
+                "critical": 0,
+                "warning": 1,
+                "info": 2,
+            }
+
+            sorted_issues = sorted(
+                quality_report.issues,
+                key=lambda issue: (
+                    severity_order.get(
+                        issue.severity,
+                        99,
+                    ),
+                    issue.category,
+                    issue.column or "",
+                ),
+            )
+
+            for issue in sorted_issues:
+
+                heading = (
+                    f"{issue.severity.upper()} · "
+                    f"{issue.title}"
+                )
+
+                if issue.column:
+                    heading += (
+                        f" · {issue.column}"
+                    )
+
+                if issue.severity == "critical":
+
+                    st.error(
+                        f"**{heading}**\n\n"
+                        f"{issue.description}"
+                    )
+
+                elif issue.severity == "warning":
+
+                    st.warning(
+                        f"**{heading}**\n\n"
+                        f"{issue.description}"
+                    )
+
+                else:
+
+                    st.info(
+                        f"**{heading}**\n\n"
+                        f"{issue.description}"
+                    )
+
+        # =================================================
+        # DETECTED TYPES
+        # =================================================
+
+        st.divider()
+
+        st.subheader(
+            "Detected Column Types"
+        )
+
+        type_dataframe = pd.DataFrame(
+            [
+                {
+                    "Type":
+                        semantic_type.title(),
+
+                    "Columns":
+                        count,
+                }
+                for semantic_type, count
+                in profile.type_counts.items()
+            ]
+        )
+
+        type_col1, type_col2 = st.columns(
+            [1, 2]
+        )
+
+        with type_col1:
+
+            st.dataframe(
+                type_dataframe,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        with type_col2:
+
+            if not type_dataframe.empty:
+
+                st.bar_chart(
+                    type_dataframe.set_index(
+                        "Type"
+                    )
+                )
+
+        # =================================================
+        # COLUMN PROFILE
+        # =================================================
+
+        st.subheader(
+            "Column Profile"
+        )
+
+        column_rows = []
+
+        for column in profile.column_profiles:
+
+            column_rows.append(
+                {
+                    "Column":
+                        column.name,
+
+                    "Detected Type":
+                        column.semantic_type.title(),
+
+                    "Pandas Type":
+                        column.pandas_dtype,
+
+                    "Missing":
+                        column.missing_count,
+
+                    "Missing %":
+                        column.missing_percentage,
+
+                    "Unique":
+                        column.unique_count,
+
+                    "Unique %":
+                        column.unique_percentage,
+
+                    "Possible ID":
+                        (
+                            "Yes"
+                            if column.is_possible_identifier
+                            else "No"
+                        ),
+
+                    "Constant":
+                        (
+                            "Yes"
+                            if column.is_constant
+                            else "No"
+                        ),
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(
+                column_rows
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        # =================================================
+        # STRUCTURAL DETAILS
+        # =================================================
+
+        with st.expander(
+            "Structural Details"
+        ):
+
+            st.write(
+                "**Possible Identifier Columns**"
+            )
+
+            if profile.possible_identifier_columns:
+
+                st.write(
+                    ", ".join(
+                        profile.possible_identifier_columns
+                    )
+                )
+
+            else:
+                st.write(
+                    "None detected."
+                )
+
+            st.write(
+                "**Constant Columns**"
+            )
+
+            if profile.constant_columns:
+
+                st.write(
+                    ", ".join(
+                        profile.constant_columns
+                    )
+                )
+
+            else:
+                st.write(
+                    "None detected."
+                )
+
+            st.write(
+                "**Unnamed Columns**"
+            )
+
+            if profile.unnamed_columns:
+
+                st.write(
+                    ", ".join(
+                        profile.unnamed_columns
+                    )
+                )
+
+                st.warning(
+                    """
+                    Unnamed columns may indicate blank
+                    header cells or that the wrong row
+                    was interpreted as the table header.
+                    """
+                )
+
+            else:
+                st.write(
+                    "None detected."
+                )
+
+        # =================================================
+        # COLUMN INSPECTOR
+        # =================================================
+
+        st.subheader(
+            "Column Inspector"
+        )
+
+        selected_column_name = st.selectbox(
+            "Select a column",
+            options=[
+                column.name
+                for column in profile.column_profiles
+            ],
+        )
+
+        selected_profile = next(
+            column
+            for column in profile.column_profiles
+            if column.name
+            == selected_column_name
+        )
+
+        inspect1, inspect2, inspect3, inspect4 = (
+            st.columns(4)
+        )
+
+        with inspect1:
+
+            st.metric(
+                "Detected Type",
+                selected_profile.semantic_type.title(),
+            )
+
+        with inspect2:
+
+            st.metric(
+                "Missing",
+                f"{selected_profile.missing_percentage:.2f}%",
+            )
+
+        with inspect3:
+
+            st.metric(
+                "Unique Values",
+                f"{selected_profile.unique_count:,}",
+            )
+
+        with inspect4:
+
+            st.metric(
+                "Unique %",
+                f"{selected_profile.unique_percentage:.2f}%",
+            )
+
+        if (
+            selected_profile.semantic_type
+            == "numeric"
+        ):
+
+            st.write(
+                "#### Numerical Statistics"
+            )
+
+            num1, num2, num3, num4 = (
+                st.columns(4)
+            )
+
+            with num1:
+
+                st.metric(
+                    "Minimum",
+                    selected_profile.minimum,
+                )
+
+            with num2:
+
+                st.metric(
+                    "Maximum",
+                    selected_profile.maximum,
+                )
+
+            with num3:
+
+                st.metric(
+                    "Mean",
+                    (
+                        f"{selected_profile.mean:.2f}"
+                        if selected_profile.mean
+                        is not None
+                        else "N/A"
+                    ),
+                )
+
+            with num4:
+
+                st.metric(
+                    "Median",
+                    (
+                        f"{selected_profile.median:.2f}"
+                        if selected_profile.median
+                        is not None
+                        else "N/A"
+                    ),
+                )
+
+        st.write(
+            "#### Sample Values"
+        )
+
+        if selected_profile.sample_values:
+
+            st.dataframe(
+                pd.DataFrame(
+                    {
+                        "Sample Value":
+                            selected_profile.sample_values
+                    }
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        else:
+
+            st.write(
+                "No non-null sample values."
+            )
+
+        # =================================================
+        # RAW DATA
+        # =================================================
+
+        with st.expander(
+            "Raw Data Preview"
+        ):
+
+            st.dataframe(
+                dataframe.head(20),
+                use_container_width=True,
+            )
+
+            st.caption(
+                "Showing the first 20 rows."
+            )
+
+    except FileValidationError as exc:
+
+        st.error(
+            f"File validation failed: {exc}"
+        )
+
+    except DatasetLoadError as exc:
+
+        st.error(
+            f"Dataset could not be loaded: {exc}"
+        )
+
+    except Exception as exc:
+
+        st.error(
+            "An unexpected error occurred while "
+            "processing the dataset."
+        )
+
+        with st.expander(
+            "Technical Details"
+        ):
+            st.code(
+                str(exc)
+            )

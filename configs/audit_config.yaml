@@ -1,0 +1,58 @@
+project:
+  name: "MASH LABS Data Audit Engine"
+  version: "0.1.0"
+
+files:
+  allowed_extensions:
+    - csv
+    - xlsx
+  max_file_size_mb: 100
+
+quality_score:
+  completeness:
+    weight: 25
+
+  uniqueness:
+    weight: 15
+
+  validity:
+    weight: 20
+
+  consistency:
+    weight: 15
+
+  structural_quality:
+    weight: 15
+
+  statistical_health:
+    weight: 10
+
+severity:
+  pass:
+    minimum_score: 85
+
+  warning:
+    minimum_score: 60
+
+  critical:
+    minimum_score: 0
+
+profiling:
+  detect_missing_values: true
+  detect_duplicates: true
+  detect_constant_columns: true
+  detect_high_cardinality: true
+  detect_possible_identifiers: true
+
+statistics:
+  calculate_descriptive_statistics: true
+  calculate_correlations: true
+  detect_outliers: true
+  calculate_skewness: true
+
+visualization:
+  generate_distributions: true
+  generate_boxplots: true
+  generate_category_charts: true
+  generate_correlation_matrix: true
+  generate_missingness_charts: true

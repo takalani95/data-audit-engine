@@ -1,0 +1,9 @@
+pandas
+numpy
+openpyxl
+scipy
+plotly
+streamlit
+pyyaml
+pytest
+pytest-cov
