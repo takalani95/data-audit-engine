@@ -21,6 +21,10 @@ from src.quality.validity import (
     calculate_validity_score,
     run_validity_checks,
 )
+from src.statistics.statistical_health import (
+    calculate_statistical_health_score,
+    run_statistical_health_checks,
+)
 
 
 WEIGHTS = {
@@ -131,12 +135,12 @@ def run_quality_audit(
     """
     Run the deterministic data-quality audit.
 
-    Only implemented dimensions contribute to the
-    overall score.
+    All six V1 quality dimensions are currently
+    implemented.
 
-    Dimensions that have not yet been implemented remain
-    explicitly unassessed and therefore do not influence
-    the current overall score.
+    The scoring architecture remains capable of excluding
+    unassessed dimensions so future dimensions can be
+    introduced safely without distorting the score.
     """
 
     issues: list[QualityIssue] = []
@@ -224,6 +228,27 @@ def run_quality_audit(
     )
 
     # -------------------------------------------------
+    # Statistical health
+    # -------------------------------------------------
+
+    statistical_health_issues = (
+        run_statistical_health_checks(
+            dataframe
+        )
+    )
+
+    issues.extend(
+        statistical_health_issues
+    )
+
+    statistical_health_score = (
+        calculate_statistical_health_score(
+            dataframe,
+            statistical_health_issues,
+        )
+    )
+
+    # -------------------------------------------------
     # Dimension scores
     # -------------------------------------------------
 
@@ -247,7 +272,7 @@ def run_quality_audit(
             _score_structural_quality(profile),
 
         "statistical_health":
-            None,
+            statistical_health_score,
     }
 
     # -------------------------------------------------
@@ -285,11 +310,11 @@ def run_quality_audit(
     # Overall score
     # -------------------------------------------------
     #
-    # Pending dimensions are excluded.
+    # The engine still supports unassessed dimensions.
+    # Only assessed dimensions contribute to the score.
     #
-    # The configured weights of assessed dimensions are
-    # renormalised so the current score remains on a
-    # 0-100 scale.
+    # In V1, all configured dimensions are now assessed,
+    # so the configured weights total 100%.
     # -------------------------------------------------
 
     assessed_dimensions = [

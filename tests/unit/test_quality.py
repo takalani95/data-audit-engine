@@ -167,14 +167,19 @@ def test_quality_issues_are_explainable():
     assert issue.affected_percentage > 0
 
 
-def test_implemented_dimensions_are_assessed():
+def test_all_v1_dimensions_are_assessed():
     dataframe = pd.DataFrame(
         {
             "customer": [
                 "A",
                 "B",
                 "C",
-            ]
+            ],
+            "value": [
+                10,
+                20,
+                30,
+            ],
         }
     )
 
@@ -187,15 +192,21 @@ def test_implemented_dimensions_are_assessed():
         profile,
     )
 
-    implemented_dimensions = [
+    expected_dimensions = [
         "completeness",
         "uniqueness",
         "validity",
         "consistency",
         "structural_quality",
+        "statistical_health",
     ]
 
-    for dimension_name in implemented_dimensions:
+    assert set(
+        report.dimensions.keys()
+    ) == set(expected_dimensions)
+
+    for dimension_name in expected_dimensions:
+
         dimension = report.dimensions[
             dimension_name
         ]
@@ -204,7 +215,7 @@ def test_implemented_dimensions_are_assessed():
         assert dimension.score is not None
 
 
-def test_pending_dimensions_are_not_assessed():
+def test_v1_dimension_weights_total_100():
     dataframe = pd.DataFrame(
         {
             "customer": [
@@ -224,17 +235,12 @@ def test_pending_dimensions_are_not_assessed():
         profile,
     )
 
-    pending_dimensions = [
-        "statistical_health",
-    ]
+    total_weight = sum(
+        dimension.weight
+        for dimension in report.dimensions.values()
+    )
 
-    for dimension_name in pending_dimensions:
-        dimension = report.dimensions[
-            dimension_name
-        ]
-
-        assert dimension.assessed is False
-        assert dimension.score is None
+    assert total_weight == 100.0
 
 
 def test_validity_issue_flows_into_quality_report():
@@ -412,5 +418,140 @@ def test_consistency_problem_reduces_overall_score():
 
     assert (
         inconsistent_report.overall_score
+        < clean_report.overall_score
+    )
+
+
+def test_statistical_health_issue_flows_into_quality_report():
+    dataframe = pd.DataFrame(
+        {
+            "value": [
+                10,
+                11,
+                10,
+                12,
+                11,
+                10,
+                12,
+                11,
+                10,
+                1000,
+            ]
+        }
+    )
+
+    profile = profile_dataset(
+        dataframe
+    )
+
+    report = run_quality_audit(
+        dataframe,
+        profile,
+    )
+
+    statistical_dimension = report.dimensions[
+        "statistical_health"
+    ]
+
+    outlier_issues = [
+        issue
+        for issue in statistical_dimension.issues
+        if issue.code
+        == "NUMERIC_IQR_OUTLIERS"
+    ]
+
+    assert statistical_dimension.assessed is True
+    assert statistical_dimension.score < 100.0
+
+    assert len(outlier_issues) == 1
+    assert outlier_issues[0].column == "value"
+    assert outlier_issues[0].affected_count == 1
+
+
+def test_statistical_health_problem_reduces_overall_score():
+    clean_dataframe = pd.DataFrame(
+        {
+            "record_id": list(
+                range(1, 11)
+            ),
+            "value": [
+                10,
+                11,
+                10,
+                12,
+                11,
+                10,
+                12,
+                11,
+                10,
+                11,
+            ],
+        }
+    )
+
+    outlier_dataframe = pd.DataFrame(
+        {
+            "record_id": list(
+                range(1, 11)
+            ),
+            "value": [
+                10,
+                11,
+                10,
+                12,
+                11,
+                10,
+                12,
+                11,
+                10,
+                1000,
+            ],
+        }
+    )
+
+    clean_profile = profile_dataset(
+        clean_dataframe
+    )
+
+    outlier_profile = profile_dataset(
+        outlier_dataframe
+    )
+
+    clean_report = run_quality_audit(
+        clean_dataframe,
+        clean_profile,
+    )
+
+    outlier_report = run_quality_audit(
+        outlier_dataframe,
+        outlier_profile,
+    )
+
+    assert (
+        clean_report
+        .dimensions["uniqueness"]
+        .score
+        == 100.0
+    )
+
+    assert (
+        outlier_report
+        .dimensions["uniqueness"]
+        .score
+        == 100.0
+    )
+
+    assert (
+        outlier_report
+        .dimensions["statistical_health"]
+        .score
+        <
+        clean_report
+        .dimensions["statistical_health"]
+        .score
+    )
+
+    assert (
+        outlier_report.overall_score
         < clean_report.overall_score
     )
