@@ -40,6 +40,7 @@ from src.reporting.builder import (
 from src.reporting.pdf_renderer import (
     render_audit_report_pdf,
 )
+from app.visual_analytics import render_visual_analytics
 from src.visualization.dataframe_utils import (
     make_dataframe_display_safe,
 )
@@ -988,6 +989,13 @@ if uploaded_file is not None:
             st.write(
                 "No non-null sample values."
             )
+
+        # =================================================
+        # =================================================
+        # VISUAL ANALYTICS
+        # =================================================
+
+        render_visual_analytics(dataframe)
 
         # =================================================
         # RAW DATA
