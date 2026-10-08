@@ -253,3 +253,53 @@ def test_chart_selection_does_not_modify_input(
     )
 
     assert result == original
+from copy import deepcopy
+
+
+def test_time_series_selects_line_chart():
+    result = {
+        "column": "Date And Time Received",
+        "frequency": "daily",
+        "periods": [
+            {"period": "2026-10-01T00:00:00", "count": 2},
+            {"period": "2026-10-02T00:00:00", "count": 3},
+        ],
+    }
+
+    chart = select_chart("time_series", result)
+
+    assert chart["chart_type"] == "line"
+    assert chart["title"] == "Daily Trend: Date And Time Received"
+    assert chart["x_label"] == "Time"
+    assert chart["y_label"] == "Count"
+    assert chart["data"] == result["periods"]
+
+
+def test_empty_time_series_chart():
+    chart = select_chart(
+        "time_series",
+        {
+            "column": "Date Received",
+            "frequency": "monthly",
+            "periods": [],
+        },
+    )
+
+    assert chart["chart_type"] == "line"
+    assert chart["data"] == []
+
+
+def test_time_series_chart_does_not_modify_input():
+    result = {
+        "column": "Date Received",
+        "frequency": "weekly",
+        "periods": [
+            {"period": "2026-10-05T00:00:00", "count": 4},
+        ],
+    }
+
+    original = deepcopy(result)
+
+    select_chart("time_series", result)
+
+    assert result == original

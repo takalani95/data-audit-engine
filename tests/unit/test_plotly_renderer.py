@@ -244,3 +244,60 @@ def test_renderer_does_not_modify_input(chart_type, data):
     render_chart(specification)
 
     assert specification == original
+
+def test_line_chart_renders_time_series():
+    specification = {
+        "chart_type": "line",
+        "title": "Daily Incident Trend",
+        "x_label": "Date",
+        "y_label": "Count",
+        "data": [
+            {"period": "2026-10-01T00:00:00", "count": 2},
+            {"period": "2026-10-02T00:00:00", "count": 1},
+            {"period": "2026-10-03T00:00:00", "count": 2},
+        ],
+    }
+
+    figure = render_chart(specification)
+
+    assert len(figure.data) == 1
+    assert figure.data[0].type == "scatter"
+    assert figure.data[0].mode == "lines+markers"
+    assert list(figure.data[0].y) == [2, 1, 2]
+    assert figure.layout.xaxis.type == "date"
+
+
+def test_empty_line_chart():
+    specification = {
+        "chart_type": "line",
+        "title": "Empty Trend",
+        "x_label": "Date",
+        "y_label": "Count",
+        "data": [],
+    }
+
+    figure = render_chart(specification)
+
+    assert len(figure.data) == 1
+    assert list(figure.data[0].x) == []
+    assert list(figure.data[0].y) == []
+
+
+def test_line_chart_does_not_modify_specification():
+    from copy import deepcopy
+
+    specification = {
+        "chart_type": "line",
+        "title": "Weekly Trend",
+        "x_label": "Date",
+        "y_label": "Count",
+        "data": [
+            {"period": "2026-10-05T00:00:00", "count": 4},
+        ],
+    }
+
+    original = deepcopy(specification)
+
+    render_chart(specification)
+
+    assert specification == original

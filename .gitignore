@@ -64,3 +64,4 @@ data/samples/*
 build/
 dist/
 *.egg-info/
+app/main.py.backup

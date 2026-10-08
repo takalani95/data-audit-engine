@@ -13,6 +13,7 @@ from src.visualization.distributions import (
 )
 from src.visualization.missingness import analyse_missingness
 from src.visualization.plotly_renderer import render_chart
+from src.visualization.time_series import analyse_time_series
 
 
 def render_visual_analytics(dataframe: pd.DataFrame) -> None:
@@ -27,8 +28,8 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
     st.header("Visual Analytics")
 
     st.caption(
-        "Explore distributions, correlations, and missing "
-        "data using deterministic statistical calculations."
+        "Explore distributions, correlations, missing "
+        "data and time trends using deterministic calculations."
     )
 
     if dataframe.empty or len(dataframe.columns) == 0:
@@ -56,11 +57,12 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
         if column not in numeric_columns
     ]
 
-    distribution_tab, correlation_tab, missing_tab = st.tabs(
+    distribution_tab, correlation_tab, missing_tab, trends_tab = st.tabs(
         [
             "Distributions",
             "Correlations",
             "Missing Data",
+            "Trends",
         ]
     )
 
@@ -112,7 +114,7 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
 
                 st.plotly_chart(
                     figure,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
                 metric1, metric2, metric3 = st.columns(3)
@@ -173,7 +175,7 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
 
                 st.plotly_chart(
                     render_chart(chart_spec),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
                 st.metric(
@@ -247,7 +249,7 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
 
                 st.plotly_chart(
                     render_chart(chart_spec),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
                 metric1, metric2 = st.columns(2)
@@ -312,7 +314,7 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
 
         st.plotly_chart(
             render_chart(chart_spec),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.dataframe(
@@ -326,3 +328,133 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
             "Blank strings are not counted as missing values "
             "by this analysis."
         )
+
+
+    # =====================================================
+    # TIME TRENDS
+    # =====================================================
+
+    with trends_tab:
+        st.subheader("Time-Series Analysis")
+
+        st.caption(
+            "Analyze how record volumes change over time. "
+            "Select a date column and aggregation frequency."
+        )
+
+        candidate_columns = [
+            column
+            for column in dataframe.columns
+            if (
+                pd.api.types.is_datetime64_any_dtype(
+                    dataframe[column]
+                )
+                or (
+                    not is_numeric_dtype(dataframe[column])
+                    and not is_bool_dtype(dataframe[column])
+                )
+            )
+        ]
+
+        if not candidate_columns:
+            st.info(
+                "No potential datetime columns are available."
+            )
+        else:
+            preferred_columns = [
+                column
+                for column in candidate_columns
+                if any(
+                    keyword in str(column).lower()
+                    for keyword in (
+                        "date",
+                        "time",
+                        "timestamp",
+                        "created",
+                        "received",
+                    )
+                )
+            ]
+
+            default_column = (
+                preferred_columns[0]
+                if preferred_columns
+                else candidate_columns[0]
+            )
+
+            selected_date_column = st.selectbox(
+                "Select a date or timestamp column",
+                candidate_columns,
+                index=candidate_columns.index(default_column),
+                key="visual_trend_date_column",
+            )
+
+            frequency = st.selectbox(
+                "Aggregation frequency",
+                ["daily", "weekly", "monthly", "hourly"],
+                format_func=lambda value: value.title(),
+                key="visual_trend_frequency",
+            )
+
+            try:
+                result = analyse_time_series(
+                    dataframe[selected_date_column],
+                    frequency=frequency,
+                )
+
+                if result["valid_count"] == 0:
+                    st.warning(
+                        "No valid timestamps were found in "
+                        "the selected column."
+                    )
+                else:
+                    chart_spec = select_chart(
+                        "time_series",
+                        result,
+                    )
+
+                    figure = render_chart(chart_spec)
+
+                    st.plotly_chart(
+                        figure,
+                        width="stretch",
+                    )
+
+                    metric1, metric2, metric3 = st.columns(3)
+
+                    with metric1:
+                        st.metric(
+                            "Valid Timestamps",
+                            f"{result['valid_count']:,}",
+                        )
+
+                    with metric2:
+                        st.metric(
+                            "Invalid / Missing",
+                            (
+                                f"{result['missing_or_invalid_count']:,}"
+                            ),
+                        )
+
+                    with metric3:
+                        st.metric(
+                            "Observed Periods",
+                            f"{len(result['periods']):,}",
+                        )
+
+                    st.dataframe(
+                        pd.DataFrame(result["periods"]),
+                        hide_index=True,
+                        width="stretch",
+                    )
+
+                    st.caption(
+                        "Counts represent records per period. "
+                        "Missing and invalid dates are excluded. "
+                        "Periods without records are not shown."
+                    )
+
+            except (ValueError, TypeError) as exc:
+                st.warning(
+                    f"Unable to analyze this date column: {exc}"
+                )

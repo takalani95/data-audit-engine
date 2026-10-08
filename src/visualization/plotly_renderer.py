@@ -12,6 +12,7 @@ SUPPORTED_CHART_TYPES = {
     "bar",
     "heatmap",
     "missingness_bar",
+    "line",
 }
 
 
@@ -93,6 +94,21 @@ def render_chart(
                 name="Missing %",
             )
         )
+
+    elif chart_type == "line":
+        figure.add_trace(
+            go.Scatter(
+                x=[item["period"] for item in data],
+                y=[item["count"] for item in data],
+                mode="lines+markers",
+                name="Count",
+                line={"width": 2},
+                marker={"size": 7},
+                connectgaps=False,
+            )
+        )
+
+        figure.update_xaxes(type="date")
 
     elif chart_type == "heatmap":
         columns = sorted({

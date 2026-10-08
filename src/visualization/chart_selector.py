@@ -9,6 +9,7 @@ SUPPORTED_ANALYSES = {
     "categorical_distribution": "bar",
     "correlation": "heatmap",
     "missingness": "missingness_bar",
+    "time_series": "line",
 }
 
 
@@ -34,6 +35,24 @@ def select_chart(
         )
 
     chart_type = SUPPORTED_ANALYSES[analysis_type]
+
+    if analysis_type == "time_series":
+        column = analysis_result.get("column", "Unknown")
+        frequency = analysis_result.get("frequency", "daily")
+
+        return {
+            "chart_type": chart_type,
+            "title": f"{frequency.title()} Trend: {column}",
+            "x_label": "Time",
+            "y_label": "Count",
+            "data": [
+                {
+                    "period": item["period"],
+                    "count": item["count"],
+                }
+                for item in analysis_result.get("periods", [])
+            ],
+        }
 
     if analysis_type == "numeric_distribution":
         column = analysis_result.get("column", "Unknown")
