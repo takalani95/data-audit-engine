@@ -65,3 +65,7 @@ build/
 dist/
 *.egg-info/
 app/main.py.backup
+
+duration_preview.html
+app/visual_analytics.py.before_duration
+downtime2.xlsx

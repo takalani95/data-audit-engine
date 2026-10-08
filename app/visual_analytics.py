@@ -6,6 +6,9 @@ import streamlit as st
 from pandas.api.types import is_bool_dtype, is_numeric_dtype
 
 from src.visualization.chart_selector import select_chart
+from src.visualization.dataset_intelligence import analyse_dataset_intelligence
+from src.visualization.duration_charts import create_duration_histogram
+from src.visualization.duration_intelligence import analyse_duration_column
 from src.visualization.correlations import analyse_correlations
 from src.visualization.distributions import (
     analyse_categorical_distribution,
@@ -57,12 +60,13 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
         if column not in numeric_columns
     ]
 
-    distribution_tab, correlation_tab, missing_tab, trends_tab = st.tabs(
+    distribution_tab, correlation_tab, missing_tab, trends_tab, recommendations_tab = st.tabs(
         [
             "Distributions",
             "Correlations",
             "Missing Data",
             "Trends",
+            "Recommendations",
         ]
     )
 
@@ -458,3 +462,144 @@ def render_visual_analytics(dataframe: pd.DataFrame) -> None:
                 st.warning(
                     f"Unable to analyze this date column: {exc}"
                 )
+
+
+    # =====================================================
+    # INTELLIGENT CHART RECOMMENDATIONS
+    # =====================================================
+
+    with recommendations_tab:
+        st.subheader("Intelligent Chart Recommendations")
+
+        st.caption(
+            "MASH LABS examines each column and suggests "
+            "a suitable visualization using deterministic "
+            "data-type and cardinality rules."
+        )
+
+        intelligence = analyse_dataset_intelligence(dataframe)
+
+        metric1, metric2, metric3 = st.columns(3)
+
+        with metric1:
+            st.metric(
+                "Columns Analysed",
+                intelligence["column_count"],
+            )
+
+        with metric2:
+            st.metric(
+                "Charts Recommended",
+                intelligence["recommended_count"],
+            )
+
+        with metric3:
+            st.metric(
+                "Columns Skipped",
+                intelligence["skipped_count"],
+            )
+
+        recommendation_rows = []
+
+        for item in intelligence["columns"]:
+            recommendation_rows.append({
+                "Column": item["column"],
+                "Position": item["column_index"] + 1,
+                "Detected Type": item["semantic_type"],
+                "Recommended Chart": (
+                    item["recommended_chart"] or "None"
+                ),
+                "Unique Values": item["unique_count"],
+                "Missing Values": item["missing_count"],
+                "Explanation": item["reason"],
+            })
+
+        st.dataframe(
+            pd.DataFrame(recommendation_rows),
+            hide_index=True,
+            width="stretch",
+        )
+
+
+        # Duration Intelligence preview
+        duration_columns = [
+            item["column"]
+            for item in intelligence["columns"]
+            if item["semantic_type"] == "duration"
+        ]
+
+        if duration_columns:
+            st.divider()
+            st.subheader("Duration Intelligence")
+
+            selected_duration = st.selectbox(
+                "Select a duration column",
+                duration_columns,
+                key="visual_recommended_duration",
+            )
+
+            duration_bins = st.slider(
+                "Duration histogram bins",
+                min_value=5,
+                max_value=100,
+                value=30,
+                key="visual_duration_bins",
+            )
+
+            duration_result = analyse_duration_column(
+                dataframe[selected_duration]
+            )
+
+            if duration_result["valid_count"] > 0:
+                duration_figure = create_duration_histogram(
+                    dataframe[selected_duration],
+                    bins=duration_bins,
+                )
+
+                st.plotly_chart(
+                    duration_figure,
+                    width="stretch",
+                )
+
+                d1, d2, d3, d4 = st.columns(4)
+
+                with d1:
+                    st.metric(
+                        "Valid Durations",
+                        f"{duration_result['valid_count']:,}",
+                    )
+
+                with d2:
+                    st.metric(
+                        "Invalid / Missing",
+                        f"{duration_result['invalid_or_missing_count']:,}",
+                    )
+
+                with d3:
+                    st.metric(
+                        "Median (minutes)",
+                        f"{duration_result['median']:,.1f}",
+                    )
+
+                with d4:
+                    st.metric(
+                        "Parse Success",
+                        f"{duration_result['parse_success_rate']:.2%}",
+                    )
+
+                st.caption(
+                    "Durations are converted to minutes. "
+                    "Unrecognised values are excluded from "
+                    "the histogram and counted separately."
+                )
+            else:
+                st.warning(
+                    "No valid durations are available "
+                    "for this column."
+                )
+
+        st.caption(
+            "Recommendations are heuristic and may require "
+            "business-context review. Identifier columns are "
+            "not automatically charted."
+        )
