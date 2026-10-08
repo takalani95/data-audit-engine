@@ -1,11 +1,14 @@
 
 from __future__ import annotations
+from fastapi import FastAPI, File, HTTPException, UploadFile, Header
 import os
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
-
+import secrets
+from fastapi import Header
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +26,28 @@ app = FastAPI(
     description="Backend API for the MASH LABS Data Audit Engine",
     version="0.1.0",
 )
+
+def require_beta_access(authorization: str | None = Header(default=None)):
+    expected_token = os.getenv("BETA_API_TOKEN")
+
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Private beta access is not configured.",
+        )
+
+    scheme, separator, provided_token = (authorization or "").partition(" ")
+
+    if (
+        not separator
+        or scheme.lower() != "bearer"
+        or not secrets.compare_digest(provided_token, expected_token)
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing beta access token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 # Local development origins only.
 
@@ -60,7 +85,7 @@ def health_check():
     }
 
 
-@app.post("/api/audit")
+@app.post("/api/audit", dependencies=[Depends(require_beta_access)])
 async def audit_dataset(file: UploadFile = File(...)):
     filename = Path(file.filename or "").name
     extension = Path(filename).suffix.lower()

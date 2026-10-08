@@ -1,16 +1,22 @@
 
 from io import BytesIO
-
+import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
 
 client = TestClient(app)
 
+@pytest.fixture(autouse=True)
+def configure_test_auth(monkeypatch):
+    monkeypatch.setenv("BETA_API_TOKEN", "test-secret-token")
+
+
 
 def upload(filename, content):
     return client.post(
         "/api/audit",
+        headers={"Authorization": "Bearer test-secret-token"},
         files={
             "file": (
                 filename,
@@ -75,10 +81,12 @@ def test_oversized_file():
 
 
 def test_missing_file():
-    response = client.post("/api/audit")
+    response = client.post(
+        "/api/audit",
+        headers={"Authorization": "Bearer test-secret-token"},
+    )
 
     assert response.status_code == 422
-
 def test_configured_cors_origins(monkeypatch):
     import importlib
     import api.main as api_module
@@ -114,3 +122,55 @@ def test_configured_cors_origins(monkeypatch):
         assert "access-control-allow-origin" not in blocked.headers
 
     importlib.reload(api_module)
+
+def test_beta_access_missing_configuration(monkeypatch):
+    monkeypatch.delenv("BETA_API_TOKEN", raising=False)
+
+    response = upload("sample.csv", b"a,b\n1,2\n")
+
+    assert response.status_code == 503
+
+
+def test_beta_access_missing_token(monkeypatch):
+    monkeypatch.setenv("BETA_API_TOKEN", "test-secret-token")
+
+    response = client.post(
+        "/api/audit",
+        files={
+            "file": (
+                "sample.csv",
+                b"a,b\n1,2\n",
+            )
+        },
+    )
+
+    assert response.status_code == 401
+
+def test_beta_access_invalid_token(monkeypatch):
+    monkeypatch.setenv("BETA_API_TOKEN", "test-secret-token")
+
+    response = client.post(
+        "/api/audit",
+        headers={"Authorization": "Bearer incorrect-token"},
+        files={"file": ("sample.csv", b"a,b\n1,2\n")},
+    )
+
+    assert response.status_code == 401
+
+
+def test_beta_access_valid_token(monkeypatch):
+    monkeypatch.setenv("BETA_API_TOKEN", "test-secret-token")
+
+    response = client.post(
+        "/api/audit",
+        headers={"Authorization": "Bearer test-secret-token"},
+        files={
+            "file": (
+                "sample.csv",
+                b"Merchant No,Region\n1001,Gauteng\n1002,Limpopo\n",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"] == 2
