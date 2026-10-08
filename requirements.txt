@@ -8,3 +8,7 @@ pyyaml
 reportlab
 pytest
 pytest-cov
+fastapi
+uvicorn
+python-multipart
+httpx

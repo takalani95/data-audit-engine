@@ -1,0 +1,110 @@
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from io import BytesIO
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.ingestion.loader import DatasetLoadError, load_dataset
+from src.profiling.profiler import profile_dataset
+from src.quality.engine import run_quality_audit
+from src.visualization.dataset_intelligence import (
+    analyse_dataset_intelligence,
+)
+
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+app = FastAPI(
+    title="MASH LABS Data Audit API",
+    description="Backend API for the MASH LABS Data Audit Engine",
+    version="0.1.0",
+)
+
+# Local development origins only.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+
+@app.get("/api/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "MASH LABS Data Audit Engine",
+        "version": "0.1.0",
+    }
+
+
+@app.post("/api/audit")
+async def audit_dataset(file: UploadFile = File(...)):
+    filename = Path(file.filename or "").name
+    extension = Path(filename).suffix.lower()
+
+    if extension not in {".csv", ".xlsx"}:
+        raise HTTPException(
+            status_code=415,
+            detail="Only CSV and XLSX files are supported.",
+        )
+
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty.",
+        )
+
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Maximum upload size is 5 MB.",
+        )
+
+    try:
+        ingestion = load_dataset(
+            BytesIO(content),
+            filename,
+        )
+
+        dataframe = ingestion.dataframe
+
+        profile = profile_dataset(dataframe)
+
+        quality = run_quality_audit(
+            dataframe,
+            profile,
+        )
+
+        intelligence = analyse_dataset_intelligence(
+            dataframe
+        )
+
+        return jsonable_encoder(
+            {
+                "filename": filename,
+                "rows": int(dataframe.shape[0]),
+                "columns": int(dataframe.shape[1]),
+                "quality": asdict(quality),
+                "recommendations": intelligence,
+            }
+        )
+
+    except DatasetLoadError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
