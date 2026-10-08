@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-
+import os
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
@@ -25,16 +25,30 @@ app = FastAPI(
 )
 
 # Local development origins only.
+
+# Browser origins permitted to access the API.
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+configured_origins = os.getenv("ALLOWED_ORIGINS", "")
+
+allowed_origins = (
+    [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+    if configured_origins
+    else DEFAULT_ALLOWED_ORIGINS
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
 
 
 @app.get("/api/health")

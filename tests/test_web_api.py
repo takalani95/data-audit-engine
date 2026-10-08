@@ -78,3 +78,39 @@ def test_missing_file():
     response = client.post("/api/audit")
 
     assert response.status_code == 422
+
+def test_configured_cors_origins(monkeypatch):
+    import importlib
+    import api.main as api_module
+
+    production_origin = "https://takalani95.github.io"
+    blocked_origin = "https://unapproved.example"
+
+    with monkeypatch.context() as patch:
+        patch.setenv("ALLOWED_ORIGINS", production_origin)
+        reloaded_module = importlib.reload(api_module)
+
+        with TestClient(reloaded_module.app) as test_client:
+            allowed = test_client.options(
+                "/api/audit",
+                headers={
+                    "Origin": production_origin,
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+
+            blocked = test_client.options(
+                "/api/audit",
+                headers={
+                    "Origin": blocked_origin,
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+
+        assert allowed.status_code == 200
+        assert allowed.headers["access-control-allow-origin"] == production_origin
+
+        assert blocked.status_code == 400
+        assert "access-control-allow-origin" not in blocked.headers
+
+    importlib.reload(api_module)
