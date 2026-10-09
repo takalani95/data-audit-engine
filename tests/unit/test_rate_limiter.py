@@ -65,3 +65,55 @@ def test_limit_resets_after_window(monkeypatch):
 def test_invalid_configuration(limit, window_seconds):
     with pytest.raises(ValueError):
         RateLimiter(limit=limit, window_seconds=window_seconds)
+def test_cleanup_removes_expired_identities(monkeypatch):
+    from api.security import rate_limiter as module
+
+    clock = [100.0]
+    monkeypatch.setattr(module, "monotonic", lambda: clock[0])
+
+    limiter = module.RateLimiter(limit=10, window_seconds=60)
+
+    limiter.check("user-a")
+    assert "user-a" in limiter.requests
+
+    clock[0] = 161.0
+    limiter.cleanup()
+
+    assert "user-a" not in limiter.requests
+
+
+def test_cleanup_preserves_active_identities(monkeypatch):
+    from api.security import rate_limiter as module
+
+    clock = [100.0]
+    monkeypatch.setattr(module, "monotonic", lambda: clock[0])
+
+    limiter = module.RateLimiter(limit=10, window_seconds=60)
+
+    limiter.check("old-user")
+
+    clock[0] = 130.0
+    limiter.check("active-user")
+
+    clock[0] = 161.0
+    limiter.cleanup()
+
+    assert "old-user" not in limiter.requests
+    assert "active-user" in limiter.requests
+    assert len(limiter.requests["active-user"]) == 1
+def test_automatic_cleanup_on_new_request(monkeypatch):
+    from api.security import rate_limiter as module
+
+    clock = [100.0]
+    monkeypatch.setattr(module, "monotonic", lambda: clock[0])
+
+    limiter = module.RateLimiter(limit=10, window_seconds=60)
+
+    limiter.check("old-user")
+    assert "old-user" in limiter.requests
+
+    clock[0] = 161.0
+    limiter.check("new-user")
+
+    assert "old-user" not in limiter.requests
+    assert "new-user" in limiter.requests

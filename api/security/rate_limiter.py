@@ -1,3 +1,4 @@
+
 from collections import defaultdict, deque
 from math import ceil
 from threading import Lock
@@ -15,11 +16,16 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self.requests = defaultdict(deque)
         self.lock = Lock()
+        self.last_cleanup = monotonic()
 
     def check(self, identity):
         now = monotonic()
 
         with self.lock:
+            if now - self.last_cleanup >= self.window_seconds:
+                self._cleanup_expired(now)
+                self.last_cleanup = now
+
             timestamps = self.requests[identity]
 
             while timestamps and now - timestamps[0] >= self.window_seconds:
@@ -38,3 +44,23 @@ class RateLimiter:
                 )
 
             timestamps.append(now)
+
+    def _cleanup_expired(self, now):
+        expired_identities = []
+
+        for identity, timestamps in self.requests.items():
+            while timestamps and now - timestamps[0] >= self.window_seconds:
+                timestamps.popleft()
+
+            if not timestamps:
+                expired_identities.append(identity)
+
+        for identity in expired_identities:
+            del self.requests[identity]
+
+    def cleanup(self):
+        now = monotonic()
+
+        with self.lock:
+            self._cleanup_expired(now)
+            self.last_cleanup = now
