@@ -1,17 +1,16 @@
 
 from __future__ import annotations
-from fastapi import FastAPI, File, HTTPException, UploadFile, Header
+
 import os
+import secrets
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
-import secrets
-from fastapi import Header
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Depends
+
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-
+from api.security.rate_limiter import RateLimiter
 from src.ingestion.loader import DatasetLoadError, load_dataset
 from src.profiling.profiler import profile_dataset
 from src.quality.engine import run_quality_audit
@@ -20,6 +19,7 @@ from src.visualization.dataset_intelligence import (
 )
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+audit_rate_limiter = RateLimiter(limit=10, window_seconds=60)
 
 app = FastAPI(
     title="MASH LABS Data Audit API",
@@ -49,6 +49,8 @@ def require_beta_access(authorization: str | None = Header(default=None)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    audit_rate_limiter.check("private-beta")
+
 # Local development origins only.
 
 # Browser origins permitted to access the API.
@@ -70,7 +72,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 

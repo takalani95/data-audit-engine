@@ -2,7 +2,7 @@
 from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
-
+import api.main as api_module
 from api.main import app
 
 client = TestClient(app)
@@ -10,6 +10,11 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def configure_test_auth(monkeypatch):
     monkeypatch.setenv("BETA_API_TOKEN", "test-secret-token")
+
+    limiter = api_module.audit_rate_limiter
+
+    with limiter.lock:
+        limiter.requests.clear()
 
 
 
@@ -174,3 +179,26 @@ def test_beta_access_valid_token(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["rows"] == 2
+def test_api_rate_limit_returns_429():
+    for _ in range(api_module.audit_rate_limiter.limit):
+        response = upload("sample.csv", b"a,b\n1,2\n")
+        assert response.status_code == 200
+
+    response = upload("sample.csv", b"a,b\n1,2\n")
+
+    assert response.status_code == 429
+    assert int(response.headers["Retry-After"]) >= 1
+
+
+def test_invalid_token_does_not_bypass_authentication():
+    for _ in range(api_module.audit_rate_limiter.limit):
+        response = upload("sample.csv", b"a,b\n1,2\n")
+        assert response.status_code == 200
+
+    response = client.post(
+        "/api/audit",
+        headers={"Authorization": "Bearer invalid-token"},
+        files={"file": ("sample.csv", b"a,b\n1,2\n")},
+    )
+
+    assert response.status_code == 401
